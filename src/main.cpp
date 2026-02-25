@@ -17,12 +17,25 @@ const int M2_STEP_PIN   = 11;
 
 const int STEPS_PER_REV = 200; // typical for 1.8 deg steppers (adjust if needed)
 
+void stepMotor(int dirPin, int stepPin, bool dir, int steps, int pulseDelayUs) {
+  digitalWrite(dirPin, dir ? HIGH : LOW);
+  delay(5); // small settle time after direction change
+
+  for (int i = 0; i < steps; i++) {
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(pulseDelayUs);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(pulseDelayUs);
+  }
+}
+
+// Simple linear acceleration/deceleration to reduce resonance/screeching.
 void stepMotorRamped(int dirPin, int stepPin, bool dir, int steps, int startDelayUs, int runDelayUs) {
   digitalWrite(dirPin, dir ? HIGH : LOW);
   delay(5);
 
-  int rampSteps = steps / 3;
-  if (rampSteps < 40) rampSteps = 40;
+  int rampSteps = steps / 4;
+  if (rampSteps < 20) rampSteps = 20;
   if (rampSteps * 2 > steps) rampSteps = steps / 2;
 
   for (int i = 0; i < steps; i++) {
@@ -52,42 +65,68 @@ void setup() {
   pinMode(M2_STEP_PIN, OUTPUT);
 
   digitalWrite(PUMP_PIN, LOW);
-  digitalWrite(M1_STEP_PIN, LOW);
-  digitalWrite(M2_STEP_PIN, LOW);
 
   Serial.begin(115200);
-  Serial.println("Starting component test (slow + ramped)...");
+  Serial.println("Starting component test...");
 }
 
 void loop() {
   // 1) Pump test
-  Serial.println("\n=== Pump test ===");
   Serial.println("Pump ON");
   digitalWrite(PUMP_PIN, HIGH);
   delay(2000);
   Serial.println("Pump OFF");
   digitalWrite(PUMP_PIN, LOW);
-  delay(1500);
+  delay(1000);
 
-  // 2) Motor 1 only (NEMA 17)
-  Serial.println("\n=== Motor 1 only (NEMA 17) ===");
-  Serial.println("M1 CW (very slow ramped)");
-  stepMotorRamped(M1_DIR_PIN, M1_STEP_PIN, true, 1 * STEPS_PER_REV, 3200, 2200);
-  delay(700);
+  // 2) Motor 1 (NEMA 17) test
+  Serial.println("Motor 1 (NEMA 17) CW");
+  stepMotorRamped(M1_DIR_PIN, M1_STEP_PIN, true, 2 * STEPS_PER_REV, 1800, 1200);
+  delay(500);
 
-  Serial.println("M1 CCW (very slow ramped)");
-  stepMotorRamped(M1_DIR_PIN, M1_STEP_PIN, false, 1 * STEPS_PER_REV, 3200, 2200);
+  Serial.println("Motor 1 (NEMA 17) CCW");
+  stepMotorRamped(M1_DIR_PIN, M1_STEP_PIN, false, 2 * STEPS_PER_REV, 1800, 1200);
+  delay(1000);
+
+  // 3) Motor 2 (NEMA 11) test
+  Serial.println("Motor 2 (NEMA 11) CW");
+  stepMotor(M2_DIR_PIN, M2_STEP_PIN, true,  2 * STEPS_PER_REV, 1000);
+  delay(500);
+
+  Serial.println("Motor 2 (NEMA 11) CCW");
+  stepMotor(M2_DIR_PIN, M2_STEP_PIN, false, 2 * STEPS_PER_REV, 1000);
   delay(2000);
 
-  // 3) Motor 2 only (NEMA 11)
-  Serial.println("\n=== Motor 2 only (NEMA 11) ===");
-  Serial.println("M2 CW (slow ramped)");
-  stepMotorRamped(M2_DIR_PIN, M2_STEP_PIN, true, 1 * STEPS_PER_REV, 3600, 2600);
-  delay(700);
-
-  Serial.println("M2 CCW (slow ramped)");
-  stepMotorRamped(M2_DIR_PIN, M2_STEP_PIN, false, 1 * STEPS_PER_REV, 3600, 2600);
-  delay(2500);
-
-  Serial.println("Cycle complete. Repeating...\n");
+  Serial.println("Test cycle complete. Repeating...\n");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
