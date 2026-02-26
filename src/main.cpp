@@ -17,25 +17,18 @@ const int M2_STEP_PIN   = 11;
 
 const int STEPS_PER_REV = 200; // typical for 1.8 deg steppers (adjust if needed)
 
-void stepMotor(int dirPin, int stepPin, bool dir, int steps, int pulseDelayUs) {
-  digitalWrite(dirPin, dir ? HIGH : LOW);
-  delay(5); // small settle time after direction change
+// NEMA 11 high-torque profile (software-side): slow run + gentle ramp.
+const int M2_START_DELAY_US = 3800;
+const int M2_RUN_DELAY_US   = 1800;
+const int M2_TEST_STEPS      = 1100; // ~5 seconds per direction with current ramp settings
 
-  for (int i = 0; i < steps; i++) {
-    digitalWrite(stepPin, HIGH);
-    delayMicroseconds(pulseDelayUs);
-    digitalWrite(stepPin, LOW);
-    delayMicroseconds(pulseDelayUs);
-  }
-}
-
-// Simple linear acceleration/deceleration to reduce resonance/screeching.
 void stepMotorRamped(int dirPin, int stepPin, bool dir, int steps, int startDelayUs, int runDelayUs) {
+  digitalWrite(stepPin, LOW);
   digitalWrite(dirPin, dir ? HIGH : LOW);
-  delay(5);
+  delay(20); // direction settle for DRV8825
 
   int rampSteps = steps / 4;
-  if (rampSteps < 20) rampSteps = 20;
+  if (rampSteps < 50) rampSteps = 50;
   if (rampSteps * 2 > steps) rampSteps = steps / 2;
 
   for (int i = 0; i < steps; i++) {
@@ -65,12 +58,16 @@ void setup() {
   pinMode(M2_STEP_PIN, OUTPUT);
 
   digitalWrite(PUMP_PIN, LOW);
+  digitalWrite(M1_STEP_PIN, LOW);
+  digitalWrite(M2_STEP_PIN, LOW);
 
   Serial.begin(115200);
   Serial.println("Starting component test...");
 }
 
 void loop() {
+  /*
+
   // 1) Pump test
   Serial.println("Pump ON");
   digitalWrite(PUMP_PIN, HIGH);
@@ -81,52 +78,23 @@ void loop() {
 
   // 2) Motor 1 (NEMA 17) test
   Serial.println("Motor 1 (NEMA 17) CW");
-  stepMotorRamped(M1_DIR_PIN, M1_STEP_PIN, true, 2 * STEPS_PER_REV, 1800, 1200);
+  stepMotor(M1_DIR_PIN, M1_STEP_PIN, true,  2 * STEPS_PER_REV, 700);
   delay(500);
 
   Serial.println("Motor 1 (NEMA 17) CCW");
-  stepMotorRamped(M1_DIR_PIN, M1_STEP_PIN, false, 2 * STEPS_PER_REV, 1800, 1200);
+  stepMotor(M1_DIR_PIN, M1_STEP_PIN, false, 2 * STEPS_PER_REV, 700);
   delay(1000);
 
-  // 3) Motor 2 (NEMA 11) test
+  */
+
+  // 3) Motor 2 (NEMA 11) test only
   Serial.println("Motor 2 (NEMA 11) CW");
-  stepMotor(M2_DIR_PIN, M2_STEP_PIN, true,  2 * STEPS_PER_REV, 1000);
-  delay(500);
+  stepMotorRamped(M2_DIR_PIN, M2_STEP_PIN, true, M2_TEST_STEPS, M2_START_DELAY_US, M2_RUN_DELAY_US);
+  delay(700);
 
   Serial.println("Motor 2 (NEMA 11) CCW");
-  stepMotor(M2_DIR_PIN, M2_STEP_PIN, false, 2 * STEPS_PER_REV, 1000);
+  stepMotorRamped(M2_DIR_PIN, M2_STEP_PIN, false, M2_TEST_STEPS, M2_START_DELAY_US, M2_RUN_DELAY_US);
   delay(2000);
 
   Serial.println("Test cycle complete. Repeating...\n");
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
