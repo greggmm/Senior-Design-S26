@@ -1,39 +1,134 @@
 #include <Arduino.h>
+#include <Servo.h>
 
-#define DIR_PIN 10
-#define STEP_PIN 11
+// Stepper pins
+#define DIR1 10
+#define STEP1 11
 
-// Target speed settings
-#define START_DELAY_US 2000    // slow start (500 PPS)
-#define MIN_DELAY_US 1250      // ~800 PPS (high torque region)
-#define RAMP_STEPS 1000        // acceleration length
+#define DIR2 12
+#define STEP2 13
 
-void stepMotor(int delayTime);
+// Pump
+#define PUMP_PIN 9
 
-void setup() {
-  pinMode(DIR_PIN, OUTPUT);
-  pinMode(STEP_PIN, OUTPUT);
+// L298N motor pins
+#define IN1 4
+#define IN2 5
+#define IN3 6
+#define IN4 7
 
-  digitalWrite(DIR_PIN, HIGH);   // set rotation direction
+// Servo
+#define SERVO_PIN 8
+#define SERVO_FB A0
+
+Servo testServo;
+
+int stepDelay = 800; // microseconds
+
+void stepMotor(int stepPin, int dirPin, bool dir, int steps)
+{
+    digitalWrite(dirPin, dir);
+
+    for (int i = 0; i < steps; i++)
+    {
+        digitalWrite(stepPin, HIGH);
+        delayMicroseconds(stepDelay);
+        digitalWrite(stepPin, LOW);
+        delayMicroseconds(stepDelay);
+    }
 }
 
-void loop() {
+void setup()
+{
+    Serial.begin(115200);
 
-  // Accelerate
-  for (int i = 0; i < RAMP_STEPS; i++) {
-    int delayTime = map(i, 0, RAMP_STEPS, START_DELAY_US, MIN_DELAY_US);
-    stepMotor(delayTime);
-  }
+    pinMode(DIR1, OUTPUT);
+    pinMode(STEP1, OUTPUT);
 
-  // Run at max torque speed
-  while (true) {
-    stepMotor(MIN_DELAY_US);
-  }
+    pinMode(DIR2, OUTPUT);
+    pinMode(STEP2, OUTPUT);
+
+    pinMode(PUMP_PIN, OUTPUT);
+
+    pinMode(IN1, OUTPUT);
+    pinMode(IN2, OUTPUT);
+    pinMode(IN3, OUTPUT);
+    pinMode(IN4, OUTPUT);
+
+    testServo.attach(SERVO_PIN);
+
+    Serial.println("System Test Starting...");
 }
 
-void stepMotor(int delayTime) {
-  digitalWrite(STEP_PIN, HIGH);
-  delayMicroseconds(5);     // minimum pulse width
-  digitalWrite(STEP_PIN, LOW);
-  delayMicroseconds(delayTime);
+void loop()
+{
+    Serial.println("---- Stepper 1 Test ----");
+
+    stepMotor(STEP1, DIR1, HIGH, 400);
+    delay(500);
+    stepMotor(STEP1, DIR1, LOW, 400);
+
+    delay(1000);
+
+    Serial.println("---- Stepper 2 Test ----");
+
+    stepMotor(STEP2, DIR2, HIGH, 400);
+    delay(500);
+    stepMotor(STEP2, DIR2, LOW, 400);
+
+    delay(1000);
+
+    Serial.println("---- Pump Test ----");
+
+    digitalWrite(PUMP_PIN, HIGH);
+    delay(3000);
+    digitalWrite(PUMP_PIN, LOW);
+
+    delay(1000);
+
+    Serial.println("---- L298N Motor Test ----");
+
+    // Forward
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+    delay(3000);
+
+    // Reverse
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+    delay(3000);
+
+    // Stop
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, LOW);
+
+    delay(1000);
+
+    Serial.println("---- Servo Direction Test ----");
+
+    Serial.println("Move to 0°");
+    testServo.write(0);
+    delay(1000);
+
+    Serial.println("Move to 180°");
+    testServo.write(180);
+    delay(1000);
+
+    Serial.println("Move to 90° (center)");
+    testServo.write(90);
+    delay(1000);
+
+    int feedback = analogRead(SERVO_FB);
+    Serial.print("Servo Feedback: ");
+    Serial.println(feedback);
+
+    Serial.println("---- Test Cycle Complete ----");
+
+    delay(5000);
 }
