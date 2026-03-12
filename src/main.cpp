@@ -9,8 +9,8 @@
 
 #define START_DELAY_US 2000
 #define MIN_DELAY_US   1250
-#define RAMP_STEPS     1000
-#define BREAK_RUN_STEPS 4000   // adjust as needed
+#define RAMP_STEPS     100
+#define BREAK_RUN_STEPS 2000   // adjust as needed
 
 // -------------------------
 // Shaker stepper (new pins after breadboarding)
@@ -18,10 +18,10 @@
 #define SHAKE_DIR   12
 #define SHAKE_STEP  13
 
-#define SHAKE_TIME_SEC       2
-#define SHAKE_START_DELAY_US 3000   // slower start
-#define SHAKE_MIN_DELAY_US   156    // approx upper speed region, adjust if too fast
-#define SHAKE_RAMP_STEPS     800
+#define SHAKE_TIME_SEC       10
+#define SHAKE_START_DELAY_US 5000   // slower start
+#define SHAKE_MIN_DELAY_US   600    // approx upper speed region, adjust if too fast
+#define SHAKE_RAMP_STEPS     1000
 #define SHAKE_FORWARD        HIGH   // change if direction is wrong
 
 // -------------------------
@@ -74,6 +74,13 @@ void runBreakerMotor()
 
     // continue at working speed
     for (int i = 0; i < BREAK_RUN_STEPS; i++)
+    {
+        stepPulse(BREAK_STEP, MIN_DELAY_US);
+    }
+
+    digitalWrite(BREAK_DIR, LOW);
+
+    for (int i = 0; i < 500; i++)
     {
         stepPulse(BREAK_STEP, MIN_DELAY_US);
     }
