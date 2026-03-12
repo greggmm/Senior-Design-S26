@@ -1,40 +1,106 @@
 #include <Arduino.h>
 #include <Servo.h>
 
-// Stepper pins
-#define DIR1 10
-#define STEP1 11
+// -------------------------
+// Breaker stepper (your proven tube-breaking motor)
+// -------------------------
+#define BREAK_DIR   10
+#define BREAK_STEP  11
 
-#define DIR2 12
-#define STEP2 13
+#define START_DELAY_US 2000
+#define MIN_DELAY_US   1250
+#define RAMP_STEPS     1000
+#define BREAK_RUN_STEPS 4000   // adjust as needed
 
+// -------------------------
+// Shaker stepper (new pins after breadboarding)
+// -------------------------
+#define SHAKE_DIR   12
+#define SHAKE_STEP  13
+
+#define SHAKE_TIME_SEC       2
+#define SHAKE_START_DELAY_US 3000   // slower start
+#define SHAKE_MIN_DELAY_US   156    // approx upper speed region, adjust if too fast
+#define SHAKE_RAMP_STEPS     800
+#define SHAKE_FORWARD        HIGH   // change if direction is wrong
+
+// -------------------------
 // Pump
-#define PUMP_PIN 9
+// -------------------------
+#define PUMP_PIN     9
+#define PUMP_TIME_MS 5000
 
-// L298N motor pins
-#define IN1 4
-#define IN2 5
-#define IN3 6
-#define IN4 7
-
-// Servo
+// -------------------------
+// Optional servo
+// -------------------------
 #define SERVO_PIN 8
-#define SERVO_FB A0
-
 Servo testServo;
 
-int stepDelay = 800; // microseconds
-
-void stepMotor(int stepPin, int dirPin, bool dir, int steps)
+// -------------------------
+// Helper: one step pulse
+// -------------------------
+void stepPulse(int stepPin, int lowDelayUs)
 {
-    digitalWrite(dirPin, dir);
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(5);   // step pulse width
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(lowDelayUs);
+}
 
-    for (int i = 0; i < steps; i++)
+// -------------------------
+// Pump: same style as original
+// -------------------------
+void runPump()
+{
+    digitalWrite(PUMP_PIN, HIGH);
+    delay(PUMP_TIME_MS);
+    digitalWrite(PUMP_PIN, LOW);
+}
+
+// -------------------------
+// Breaker motor
+// Based on the code that successfully broke the tube
+// -------------------------
+void runBreakerMotor()
+{
+    digitalWrite(BREAK_DIR, HIGH);
+
+    // accelerate
+    for (int i = 0; i < RAMP_STEPS; i++)
     {
-        digitalWrite(stepPin, HIGH);
-        delayMicroseconds(stepDelay);
-        digitalWrite(stepPin, LOW);
-        delayMicroseconds(stepDelay);
+        int delayTime = map(i, 0, RAMP_STEPS, START_DELAY_US, MIN_DELAY_US);
+        stepPulse(BREAK_STEP, delayTime);
+    }
+
+    // continue at working speed
+    for (int i = 0; i < BREAK_RUN_STEPS; i++)
+    {
+        stepPulse(BREAK_STEP, MIN_DELAY_US);
+    }
+}
+
+// -------------------------
+// Shaker motor
+// Software version of the original idea:
+// ramp up, run for SHAKE_TIME_SEC, then stop
+// -------------------------
+void runShakerMotor()
+{
+    digitalWrite(SHAKE_DIR, SHAKE_FORWARD);
+
+    // ramp up like original shake() behavior
+    for (int i = 0; i < SHAKE_RAMP_STEPS; i++)
+    {
+        int delayTime = map(i, 0, SHAKE_RAMP_STEPS,
+                            SHAKE_START_DELAY_US, SHAKE_MIN_DELAY_US);
+        stepPulse(SHAKE_STEP, delayTime);
+    }
+
+    // run at full shake speed for fixed time
+    unsigned long endTime = millis() + (1000UL * SHAKE_TIME_SEC);
+    while (millis() < endTime)
+    {
+        stepPulse(SHAKE_STEP, SHAKE_MIN_DELAY_US);
     }
 }
 
@@ -42,93 +108,41 @@ void setup()
 {
     Serial.begin(115200);
 
-    pinMode(DIR1, OUTPUT);
-    pinMode(STEP1, OUTPUT);
+    pinMode(BREAK_DIR, OUTPUT);
+    pinMode(BREAK_STEP, OUTPUT);
 
-    pinMode(DIR2, OUTPUT);
-    pinMode(STEP2, OUTPUT);
+    pinMode(SHAKE_DIR, OUTPUT);
+    pinMode(SHAKE_STEP, OUTPUT);
 
     pinMode(PUMP_PIN, OUTPUT);
 
-    pinMode(IN1, OUTPUT);
-    pinMode(IN2, OUTPUT);
-    pinMode(IN3, OUTPUT);
-    pinMode(IN4, OUTPUT);
+    digitalWrite(PUMP_PIN, LOW);
+    digitalWrite(BREAK_STEP, LOW);
+    digitalWrite(SHAKE_STEP, LOW);
 
-    testServo.attach(SERVO_PIN);
+    testServo.attach(SERVO_PIN);   // attached but unused for now
+
+    delay(10);
 
     Serial.println("System Test Starting...");
+
+    // Run once immediately on power-up, like original code
+    runPump();
+    delay(500);
+
+    runBreakerMotor();
+    delay(500);
+
+    runShakerMotor();
+
+    Serial.println("Sequence Complete.");
 }
 
 void loop()
 {
-    Serial.println("---- Stepper 1 Test ----");
-
-    stepMotor(STEP1, DIR1, HIGH, 400);
-    delay(500);
-    stepMotor(STEP1, DIR1, LOW, 400);
-
-    delay(1000);
-
-    Serial.println("---- Stepper 2 Test ----");
-
-    stepMotor(STEP2, DIR2, HIGH, 400);
-    delay(500);
-    stepMotor(STEP2, DIR2, LOW, 400);
-
-    delay(1000);
-
-    Serial.println("---- Pump Test ----");
-
-    digitalWrite(PUMP_PIN, HIGH);
-    delay(3000);
-    digitalWrite(PUMP_PIN, LOW);
-
-    delay(1000);
-
-    Serial.println("---- L298N Motor Test ----");
-
-    // Forward
-    digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
-    delay(3000);
-
-    // Reverse
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, HIGH);
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, HIGH);
-    delay(3000);
-
-    // Stop
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, LOW);
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, LOW);
-
-    delay(1000);
-
-    Serial.println("---- Servo Direction Test ----");
-
-    Serial.println("Move to 0°");
-    testServo.write(0);
-    delay(1000);
-
-    Serial.println("Move to 180°");
-    testServo.write(180);
-    delay(1000);
-
-    Serial.println("Move to 90° (center)");
-    testServo.write(90);
-    delay(1000);
-
-    int feedback = analogRead(SERVO_FB);
-    Serial.print("Servo Feedback: ");
-    Serial.println(feedback);
-
-    Serial.println("---- Test Cycle Complete ----");
-
-    delay(5000);
+    // idle forever, same idea as original code
+    while (1)
+    {
+        delay(1000);
+    }
 }
