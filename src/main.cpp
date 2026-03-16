@@ -4,13 +4,15 @@
 // -------------------------
 // Breaker stepper (your proven tube-breaking motor)
 // -------------------------
-#define BREAK_DIR   10
-#define BREAK_STEP  11
+#define BREAK_ENABLE 2
+#define BREAK_DIR    10
+#define BREAK_STEP   11
 
 #define START_DELAY_US 2000
 #define MIN_DELAY_US   1250
 #define RAMP_STEPS     100
 #define BREAK_RUN_STEPS 2000   // adjust as needed
+#define BREAK_RETURN_STEPS 500
 
 // -------------------------
 // Shaker stepper (new pins after breadboarding)
@@ -48,6 +50,22 @@ void stepPulse(int stepPin, int lowDelayUs)
 }
 
 // -------------------------
+// Breaker driver control
+// DRV8825: LOW = enabled, HIGH = disabled
+// -------------------------
+void enableBreakerMotor()
+{
+    digitalWrite(BREAK_ENABLE, LOW);
+    delay(5);
+}
+
+void disableBreakerMotor()
+{
+    digitalWrite(BREAK_ENABLE, HIGH);
+    delay(5);
+}
+
+// -------------------------
 // Pump: same style as original
 // -------------------------
 void runPump()
@@ -63,6 +81,8 @@ void runPump()
 // -------------------------
 void runBreakerMotor()
 {
+    enableBreakerMotor();
+
     digitalWrite(BREAK_DIR, HIGH);
 
     // accelerate
@@ -78,12 +98,16 @@ void runBreakerMotor()
         stepPulse(BREAK_STEP, MIN_DELAY_US);
     }
 
+    // slight reverse to reduce tension
     digitalWrite(BREAK_DIR, LOW);
 
-    for (int i = 0; i < 500; i++)
+    for (int i = 0; i < BREAK_RETURN_STEPS; i++)
     {
         stepPulse(BREAK_STEP, MIN_DELAY_US);
     }
+
+    // fully release holding torque before shaking
+    disableBreakerMotor();
 }
 
 // -------------------------
@@ -115,6 +139,7 @@ void setup()
 {
     Serial.begin(115200);
 
+    pinMode(BREAK_ENABLE, OUTPUT);
     pinMode(BREAK_DIR, OUTPUT);
     pinMode(BREAK_STEP, OUTPUT);
 
@@ -126,6 +151,9 @@ void setup()
     digitalWrite(PUMP_PIN, LOW);
     digitalWrite(BREAK_STEP, LOW);
     digitalWrite(SHAKE_STEP, LOW);
+
+    // start with breaker disabled so there is no holding torque at idle
+    digitalWrite(BREAK_ENABLE, HIGH);
 
     testServo.attach(SERVO_PIN);   // attached but unused for now
 
@@ -139,6 +167,9 @@ void setup()
 
     runBreakerMotor();
     delay(500);
+
+    // extra safety: make sure breaker is disabled before shaking
+    disableBreakerMotor();
 
     runShakerMotor();
 
