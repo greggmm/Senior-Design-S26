@@ -2,56 +2,65 @@
 #include <Servo.h>
 
 // -------------------------
-// Breaker stepper (your proven tube-breaking motor)
+// Breaker stepper U2
 // -------------------------
 #define BREAK_ENABLE 2
-#define BREAK_DIR    10
-#define BREAK_STEP   11
+#define BREAK_DIR    12
+#define BREAK_STEP   13
 
 #define START_DELAY_US 2000
 #define MIN_DELAY_US   1250
 #define RAMP_STEPS     100
-#define BREAK_RUN_STEPS 2000   // adjust as needed
+#define BREAK_RUN_STEPS 2000
 #define BREAK_RETURN_STEPS 500
 
 // -------------------------
-// Shaker stepper (new pins after breadboarding)
+// Shaker stepper U1
 // -------------------------
-#define SHAKE_DIR   12
-#define SHAKE_STEP  13
+#define SHAKE_DIR    7
+#define SHAKE_STEP   8
 
 #define SHAKE_TIME_SEC       10
-#define SHAKE_START_DELAY_US 5000   // slower start
-#define SHAKE_MIN_DELAY_US   600    // approx upper speed region, adjust if too fast
+#define SHAKE_START_DELAY_US 5000
+#define SHAKE_MIN_DELAY_US   600
 #define SHAKE_RAMP_STEPS     1000
-#define SHAKE_FORWARD        HIGH   // change if direction is wrong
+#define SHAKE_FORWARD        HIGH
 
 // -------------------------
 // Pump
 // -------------------------
-#define PUMP_PIN     9
+#define PUMP_PIN     4
 #define PUMP_TIME_MS 5000
 
 // -------------------------
-// Optional servo
+// Camera servo
 // -------------------------
-#define SERVO_PIN 8
-Servo testServo;
+#define SERVO_PIN 3
+#define SERVO_FB  A5
 
 // -------------------------
-// Helper: one step pulse
+// L298N motor pins
+// -------------------------
+#define MOTOR_IN1 5
+#define MOTOR_IN2 6
+#define MOTOR_IN3 10
+#define MOTOR_IN4 11
+
+Servo cameraServo;
+
+// -------------------------
+// Step pulse helper
 // -------------------------
 void stepPulse(int stepPin, int lowDelayUs)
 {
     digitalWrite(stepPin, HIGH);
-    delayMicroseconds(5);   // step pulse width
+    delayMicroseconds(5);
     digitalWrite(stepPin, LOW);
     delayMicroseconds(lowDelayUs);
 }
 
 // -------------------------
-// Breaker driver control
-// DRV8825: LOW = enabled, HIGH = disabled
+// Breaker enable control
 // -------------------------
 void enableBreakerMotor()
 {
@@ -66,39 +75,41 @@ void disableBreakerMotor()
 }
 
 // -------------------------
-// Pump: same style as original
+// Pump
 // -------------------------
 void runPump()
 {
+    Serial.println("Running pump...");
     digitalWrite(PUMP_PIN, HIGH);
     delay(PUMP_TIME_MS);
     digitalWrite(PUMP_PIN, LOW);
 }
 
 // -------------------------
-// Breaker motor
-// Based on the code that successfully broke the tube
+// Breaker motor (U2)
 // -------------------------
 void runBreakerMotor()
 {
+    Serial.println("Breaking tube...");
+
     enableBreakerMotor();
 
     digitalWrite(BREAK_DIR, HIGH);
 
-    // accelerate
+    // Ramp up
     for (int i = 0; i < RAMP_STEPS; i++)
     {
         int delayTime = map(i, 0, RAMP_STEPS, START_DELAY_US, MIN_DELAY_US);
         stepPulse(BREAK_STEP, delayTime);
     }
 
-    // continue at working speed
+    // Run
     for (int i = 0; i < BREAK_RUN_STEPS; i++)
     {
         stepPulse(BREAK_STEP, MIN_DELAY_US);
     }
 
-    // slight reverse to reduce tension
+    // Slight reverse
     digitalWrite(BREAK_DIR, LOW);
 
     for (int i = 0; i < BREAK_RETURN_STEPS; i++)
@@ -106,20 +117,19 @@ void runBreakerMotor()
         stepPulse(BREAK_STEP, MIN_DELAY_US);
     }
 
-    // fully release holding torque before shaking
     disableBreakerMotor();
 }
 
 // -------------------------
-// Shaker motor
-// Software version of the original idea:
-// ramp up, run for SHAKE_TIME_SEC, then stop
+// Shaker motor (U1)
 // -------------------------
 void runShakerMotor()
 {
+    Serial.println("Shaking tube...");
+
     digitalWrite(SHAKE_DIR, SHAKE_FORWARD);
 
-    // ramp up like original shake() behavior
+    // Ramp up
     for (int i = 0; i < SHAKE_RAMP_STEPS; i++)
     {
         int delayTime = map(i, 0, SHAKE_RAMP_STEPS,
@@ -127,14 +137,119 @@ void runShakerMotor()
         stepPulse(SHAKE_STEP, delayTime);
     }
 
-    // run at full shake speed for fixed time
+    // Run for time
     unsigned long endTime = millis() + (1000UL * SHAKE_TIME_SEC);
+
     while (millis() < endTime)
     {
         stepPulse(SHAKE_STEP, SHAKE_MIN_DELAY_US);
     }
 }
 
+// -------------------------
+// Camera positions
+// -------------------------
+void cameraDriveView()
+{
+    Serial.println("Camera: drive view");
+    cameraServo.write(90);
+    delay(500);
+}
+
+void cameraCSTView()
+{
+    Serial.println("Camera: CST view");
+    cameraServo.write(0);
+    delay(500);
+}
+
+// -------------------------
+// Wheel motor control
+// -------------------------
+void motorsForward()
+{
+    digitalWrite(MOTOR_IN1, HIGH);
+    digitalWrite(MOTOR_IN2, LOW);
+    digitalWrite(MOTOR_IN3, HIGH);
+    digitalWrite(MOTOR_IN4, LOW);
+}
+
+void motorsReverse()
+{
+    digitalWrite(MOTOR_IN1, LOW);
+    digitalWrite(MOTOR_IN2, HIGH);
+    digitalWrite(MOTOR_IN3, LOW);
+    digitalWrite(MOTOR_IN4, HIGH);
+}
+
+void motorsStop()
+{
+    digitalWrite(MOTOR_IN1, LOW);
+    digitalWrite(MOTOR_IN2, LOW);
+    digitalWrite(MOTOR_IN3, LOW);
+    digitalWrite(MOTOR_IN4, LOW);
+}
+
+// -------------------------
+// Test functions
+// -------------------------
+void testWheelMotors()
+{
+    Serial.println("Testing wheel motors...");
+
+    motorsForward();
+    delay(3000);
+
+    motorsReverse();
+    delay(3000);
+
+    motorsStop();
+}
+
+void testCameraServo()
+{
+    Serial.println("Testing camera servo...");
+
+    cameraServo.write(0);
+    delay(1000);
+
+    cameraServo.write(180);
+    delay(1000);
+
+    cameraServo.write(90);
+    delay(1000);
+
+    int feedback = analogRead(SERVO_FB);
+    Serial.print("Servo feedback A5: ");
+    Serial.println(feedback);
+}
+
+// -------------------------
+// Full CST sequence
+// -------------------------
+void runCSTSequence()
+{
+    Serial.println("Starting CST sequence...");
+
+    cameraDriveView();
+
+    runPump();
+    delay(500);
+
+    runBreakerMotor();
+    delay(500);
+
+    runShakerMotor();
+    delay(500);
+
+    cameraCSTView();
+
+    Serial.println("CST sequence complete.");
+}
+
+// -------------------------
+// Setup
+// -------------------------
 void setup()
 {
     Serial.begin(115200);
@@ -148,39 +263,38 @@ void setup()
 
     pinMode(PUMP_PIN, OUTPUT);
 
+    pinMode(MOTOR_IN1, OUTPUT);
+    pinMode(MOTOR_IN2, OUTPUT);
+    pinMode(MOTOR_IN3, OUTPUT);
+    pinMode(MOTOR_IN4, OUTPUT);
+
     digitalWrite(PUMP_PIN, LOW);
     digitalWrite(BREAK_STEP, LOW);
     digitalWrite(SHAKE_STEP, LOW);
 
-    // start with breaker disabled so there is no holding torque at idle
-    digitalWrite(BREAK_ENABLE, HIGH);
+    disableBreakerMotor();
+    motorsStop();
 
-    testServo.attach(SERVO_PIN);   // attached but unused for now
-
-    delay(10);
+    cameraServo.attach(SERVO_PIN);
+    cameraDriveView();
 
     Serial.println("System Test Starting...");
 
-    // Run once immediately on power-up, like original code
-    runPump();
-    delay(500);
+    testWheelMotors();
+    delay(1000);
 
-    runBreakerMotor();
-    delay(500);
+    testCameraServo();
+    delay(1000);
 
-    // extra safety: make sure breaker is disabled before shaking
-    disableBreakerMotor();
+    runCSTSequence();
 
-    runShakerMotor();
-
-    Serial.println("Sequence Complete.");
+    Serial.println("All tests complete.");
 }
 
+// -------------------------
+// Loop
+// -------------------------
 void loop()
 {
-    // idle forever, same idea as original code
-    while (1)
-    {
-        delay(1000);
-    }
+    delay(1000);
 }
