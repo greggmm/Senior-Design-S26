@@ -11,7 +11,7 @@
 #define START_DELAY_US 2000
 #define MIN_DELAY_US   1250
 #define RAMP_STEPS     100
-#define BREAK_RUN_STEPS 2000
+#define BREAK_RUN_STEPS 100
 #define BREAK_RETURN_STEPS 500
 
 // -------------------------
@@ -45,6 +45,8 @@
 #define MOTOR_IN2 6
 #define MOTOR_IN3 10
 #define MOTOR_IN4 11
+
+#define MOTOR_SPEED 255 // 0-255, 127 ~= 50%
 
 Servo cameraServo;
 
@@ -168,18 +170,18 @@ void cameraCSTView()
 // -------------------------
 void motorsForward()
 {
-    digitalWrite(MOTOR_IN1, HIGH);
-    digitalWrite(MOTOR_IN2, LOW);
-    digitalWrite(MOTOR_IN3, HIGH);
-    digitalWrite(MOTOR_IN4, LOW);
+    digitalWrite(MOTOR_IN1, MOTOR_SPEED);
+    analogWrite(MOTOR_IN2, LOW);
+    digitalWrite(MOTOR_IN3, LOW);
+    analogWrite(MOTOR_IN4, MOTOR_SPEED);
 }
 
 void motorsReverse()
 {
     digitalWrite(MOTOR_IN1, LOW);
-    digitalWrite(MOTOR_IN2, HIGH);
-    digitalWrite(MOTOR_IN3, LOW);
-    digitalWrite(MOTOR_IN4, HIGH);
+    analogWrite(MOTOR_IN2, MOTOR_SPEED);
+    digitalWrite(MOTOR_IN3, MOTOR_SPEED);
+    analogWrite(MOTOR_IN4, LOW);
 }
 
 void motorsStop()
@@ -286,7 +288,7 @@ void setup()
     testCameraServo();
     delay(1000);
 
-    runCSTSequence();
+    // runCSTSequence();
 
     Serial.println("All tests complete.");
 }
