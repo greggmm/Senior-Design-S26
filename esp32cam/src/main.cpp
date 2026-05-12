@@ -55,16 +55,18 @@ static const int CTRL_TX_PIN = D6; // GPIO43 on XIAO ESP32-S3
 
 static void forwardControlToUno(const controlState &cs) {
   Serial.printf(
-    "UNO ctrl: thr=%d turn=%d flags=0x%02X\n",
+    "UNO ctrl: thr=%d turn=%d yaw=%d flags=0x%02X\n",
     (int)cs.drive_throttle,
     (int)cs.drive_turn,
+    (int)cs.cam_yaw,
     (unsigned)cs.flags
   );
 
   Serial2.printf(
-    "%d,%d,%u\n",
+    "%d,%d,%d,%u\n",
     (int)cs.drive_throttle,
     (int)cs.drive_turn,
+    (int)cs.cam_yaw,
     (unsigned)cs.flags
   );
 }

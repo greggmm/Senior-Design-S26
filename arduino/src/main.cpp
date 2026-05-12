@@ -37,6 +37,11 @@
 // -------------------------
 #define SERVO_PIN 3
 #define SERVO_FB  A5
+#define SERVO_MIN_ANGLE 0
+#define SERVO_DRIVE_ANGLE 90
+#define SERVO_CST_ANGLE 180
+#define SERVO_STEP_DEGREES 3
+#define SERVO_UPDATE_MS 40
 
 // -------------------------
 // L298N motor pins
@@ -50,13 +55,17 @@
 #define CONTROL_BUFFER_SIZE 32
 #define CONTROL_TIMEOUT_MS 500
 #define DRIVE_INPUT_THRESHOLD 50
+#define CAMERA_INPUT_THRESHOLD 50
 
 Servo cameraServo;
 
 char controlBuffer[CONTROL_BUFFER_SIZE];
 byte controlIndex = 0;
 unsigned long lastControlMs = 0;
+unsigned long lastServoUpdateMs = 0;
+int cameraAngle = SERVO_DRIVE_ANGLE;
 bool cstButtonWasPressed = false;
+bool cstViewActive = false;
 
 void runCSTSequence();
 
@@ -164,14 +173,16 @@ void runShakerMotor()
 void cameraDriveView()
 {
     Serial.println("Camera: drive view");
-    cameraServo.write(90);
+    cameraAngle = SERVO_DRIVE_ANGLE;
+    cameraServo.write(cameraAngle);
     delay(500);
 }
 
 void cameraCSTView()
 {
     Serial.println("Camera: CST view");
-    cameraServo.write(0);
+    cameraAngle = SERVO_CST_ANGLE;
+    cameraServo.write(cameraAngle);
     delay(500);
 }
 
@@ -185,24 +196,24 @@ void setMotorPair(int leftSpeed, int rightSpeed)
 
     if (leftSpeed >= 0)
     {
-        analogWrite(MOTOR_IN1, leftSpeed);
-        analogWrite(MOTOR_IN2, 0);
+        digitalWrite(MOTOR_IN1, leftSpeed > 0 ? HIGH : LOW);
+        digitalWrite(MOTOR_IN2, LOW);
     }
     else
     {
-        analogWrite(MOTOR_IN1, 0);
-        analogWrite(MOTOR_IN2, -leftSpeed);
+        digitalWrite(MOTOR_IN1, LOW);
+        digitalWrite(MOTOR_IN2, HIGH);
     }
 
     if (rightSpeed >= 0)
     {
-        analogWrite(MOTOR_IN3, 0);
-        analogWrite(MOTOR_IN4, rightSpeed);
+        digitalWrite(MOTOR_IN3, LOW);
+        digitalWrite(MOTOR_IN4, rightSpeed > 0 ? HIGH : LOW);
     }
     else
     {
-        analogWrite(MOTOR_IN3, -rightSpeed);
-        analogWrite(MOTOR_IN4, 0);
+        digitalWrite(MOTOR_IN3, HIGH);
+        digitalWrite(MOTOR_IN4, LOW);
     }
 }
 
@@ -235,13 +246,14 @@ void motorsStop()
     setMotorPair(0, 0);
 }
 
-bool parseControlPacket(char *packet, int &throttle, int &turn, unsigned int &flags)
+bool parseControlPacket(char *packet, int &throttle, int &turn, int &cameraYaw, unsigned int &flags)
 {
     char *first = strtok(packet, ",");
     char *second = strtok(NULL, ",");
     char *third = strtok(NULL, ",");
+    char *fourth = strtok(NULL, ",");
 
-    if (first == NULL || second == NULL || third == NULL || strtok(NULL, ",") != NULL)
+    if (first == NULL || second == NULL || third == NULL || fourth == NULL || strtok(NULL, ",") != NULL)
     {
         return false;
     }
@@ -261,14 +273,22 @@ bool parseControlPacket(char *packet, int &throttle, int &turn, unsigned int &fl
     }
 
     end = NULL;
-    unsigned long parsedFlags = strtoul(third, &end, 10);
-    if (end == third || *end != '\0' || parsedFlags > 255)
+    long parsedCameraYaw = strtol(third, &end, 10);
+    if (end == third || *end != '\0' || parsedCameraYaw < -100 || parsedCameraYaw > 100)
+    {
+        return false;
+    }
+
+    end = NULL;
+    unsigned long parsedFlags = strtoul(fourth, &end, 10);
+    if (end == fourth || *end != '\0' || parsedFlags > 255)
     {
         return false;
     }
 
     throttle = (int)parsedThrottle;
     turn = (int)parsedTurn;
+    cameraYaw = (int)parsedCameraYaw;
     flags = (unsigned int)parsedFlags;
 
     return true;
@@ -306,13 +326,67 @@ void driveFromControl(int throttle, int turn)
     }
 }
 
+void updateCameraFromControl(int cameraYaw)
+{
+    if (cstViewActive || abs(cameraYaw) < CAMERA_INPUT_THRESHOLD)
+    {
+        return;
+    }
+
+    unsigned long now = millis();
+    if (now - lastServoUpdateMs < SERVO_UPDATE_MS)
+    {
+        return;
+    }
+
+    lastServoUpdateMs = now;
+
+    if (cameraYaw > 0)
+    {
+        cameraAngle += SERVO_STEP_DEGREES;
+    }
+    else
+    {
+        cameraAngle -= SERVO_STEP_DEGREES;
+    }
+
+    cameraAngle = constrain(cameraAngle, SERVO_MIN_ANGLE, SERVO_CST_ANGLE);
+    cameraServo.write(cameraAngle);
+}
+
+void handleCSTButton(bool cstButtonPressed)
+{
+    if (!cstButtonPressed || cstButtonWasPressed)
+    {
+        cstButtonWasPressed = cstButtonPressed;
+        return;
+    }
+
+    motorsStop();
+
+    if (cstViewActive)
+    {
+        cstViewActive = false;
+        cameraDriveView();
+    }
+    else
+    {
+        cstViewActive = true;
+        runCSTSequence();
+        cameraCSTView();
+    }
+
+    cstButtonWasPressed = cstButtonPressed;
+}
+
 void handleControlPacket(char *packet)
 {
     int throttle = 0;
     int turn = 0;
+    int cameraYaw = 0;
     unsigned int flags = 0;
 
-    if (!parseControlPacket(packet, throttle, turn, flags))
+    if (!parseControlPacket(packet, throttle, turn, cameraYaw, flags))
     {
         Serial.println("Invalid control packet");
         return;
@@ -324,20 +398,18 @@ void handleControlPacket(char *packet)
     Serial.print(throttle);
     Serial.print(" turn=");
     Serial.print(turn);
+    Serial.print(" yaw=");
+    Serial.print(cameraYaw);
     Serial.print(" flags=");
     Serial.println(flags);
 
     bool cstButtonPressed = (flags & 0x01) != 0;
-    if (cstButtonPressed && !cstButtonWasPressed)
-    {
-        motorsStop();
-        runCSTSequence();
-    }
-    cstButtonWasPressed = cstButtonPressed;
+    handleCSTButton(cstButtonPressed);
 
     if (!cstButtonPressed)
     {
         driveFromControl(throttle, turn);
+        updateCameraFromControl(cameraYaw);
     }
 }
 
@@ -422,7 +494,7 @@ void runCSTSequence()
 {
     Serial.println("Starting CST sequence...");
 
-    cameraDriveView();
+    cameraCSTView();
 
     runPump();
     delay(500);
@@ -432,8 +504,6 @@ void runCSTSequence()
 
     runShakerMotor();
     delay(500);
-
-    cameraCSTView();
 
     Serial.println("CST sequence complete.");
 }
@@ -469,7 +539,7 @@ void setup()
     cameraServo.attach(SERVO_PIN);
     cameraDriveView();
 
-    Serial.println("Ready for control packets: throttle,turn,flags");
+    Serial.println("Ready for control packets: throttle,turn,yaw,flags");
 }
 
 // -------------------------

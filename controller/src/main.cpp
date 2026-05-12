@@ -55,8 +55,9 @@ static uint32_t frames = 0;
 static const int ADC_MAX = 4095;
 static const int STICK_DEADZONE = 60;
 static const int DRIVE_DIRECTION_THRESHOLD = 450;
+static const int CAMERA_DIRECTION_THRESHOLD = 450;
 // static const uint32_t STICK_PRINT_INTERVAL_MS = 100;
-static const bool PRINT_CONTROL_SEND = true;
+static const bool PRINT_CONTROL_SEND = false;
 static const uint32_t SEND_FAIL_PRINT_INTERVAL_MS = 1000;
 static const int ADC_SAMPLES_PER_AXIS = 4;
 
@@ -165,6 +166,16 @@ static void quantizeDriveDirection(int leftX, int leftY, int8_t &driveThrottle, 
   }
 }
 
+static int8_t quantizeCameraDirection(int rightX) {
+  int delta = rightX - RIGHT_STICK_X_CENTER;
+
+  if (abs(delta) < CAMERA_DIRECTION_THRESHOLD) {
+    return 0;
+  }
+
+  return (delta > 0) ? 100 : -100;
+}
+
 static controlState quantizeInputs() {
   controlState c = {0, 0, 0, 0};
 
@@ -173,7 +184,7 @@ static controlState quantizeInputs() {
   int rightX = readStableAxis(RIGHT_STICK_X_PIN);
 
   quantizeDriveDirection(leftX, leftY, c.drive_throttle, c.drive_turn);
-  c.cam_yaw = quantizeAxis(rightX, RIGHT_STICK_X_CENTER, true);
+  c.cam_yaw = quantizeCameraDirection(rightX);
 
   if (digitalRead(RIGHT_STICK_SW_PIN) == LOW) {
     c.flags |= 0x01;
