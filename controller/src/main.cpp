@@ -54,9 +54,9 @@ static uint32_t frames = 0;
 
 static const int ADC_MAX = 4095;
 static const int STICK_DEADZONE = 60;
-static const int DRIVE_DIRECTION_THRESHOLD = 25;
+static const int DRIVE_DIRECTION_THRESHOLD = 450;
 // static const uint32_t STICK_PRINT_INTERVAL_MS = 100;
-static const bool PRINT_CONTROL_SEND = false;
+static const bool PRINT_CONTROL_SEND = true;
 static const uint32_t SEND_FAIL_PRINT_INTERVAL_MS = 1000;
 static const int ADC_SAMPLES_PER_AXIS = 4;
 
@@ -144,12 +144,14 @@ static int readStableAxis(int pin) {
   return (int)(sum / ADC_SAMPLES_PER_AXIS);
 }
 
-static void quantizeDriveDirection(int8_t rawThrottle, int8_t rawTurn, int8_t &driveThrottle, int8_t &driveTurn) {
+static void quantizeDriveDirection(int leftX, int leftY, int8_t &driveThrottle, int8_t &driveTurn) {
   driveThrottle = 0;
   driveTurn = 0;
 
-  int throttleMagnitude = abs(rawThrottle);
-  int turnMagnitude = abs(rawTurn);
+  int throttleDelta = leftY - LEFT_STICK_Y_CENTER;
+  int turnDelta = leftX - LEFT_STICK_X_CENTER;
+  int throttleMagnitude = abs(throttleDelta);
+  int turnMagnitude = abs(turnDelta);
   int strongestInput = max(throttleMagnitude, turnMagnitude);
 
   if (strongestInput < DRIVE_DIRECTION_THRESHOLD) {
@@ -157,9 +159,9 @@ static void quantizeDriveDirection(int8_t rawThrottle, int8_t rawTurn, int8_t &d
   }
 
   if (throttleMagnitude >= turnMagnitude) {
-    driveThrottle = (rawThrottle > 0) ? 100 : -100;
+    driveThrottle = (throttleDelta > 0) ? 100 : -100;
   } else {
-    driveTurn = (rawTurn > 0) ? 100 : -100;
+    driveTurn = (turnDelta > 0) ? 100 : -100;
   }
 }
 
@@ -170,10 +172,7 @@ static controlState quantizeInputs() {
   int leftY = readStableAxis(LEFT_STICK_Y_PIN);
   int rightX = readStableAxis(RIGHT_STICK_X_PIN);
 
-  int8_t rawThrottle = quantizeAxis(leftY, LEFT_STICK_Y_CENTER, false);
-  int8_t rawTurn = quantizeAxis(leftX, LEFT_STICK_X_CENTER, false);
-
-  quantizeDriveDirection(rawThrottle, rawTurn, c.drive_throttle, c.drive_turn);
+  quantizeDriveDirection(leftX, leftY, c.drive_throttle, c.drive_turn);
   c.cam_yaw = quantizeAxis(rightX, RIGHT_STICK_X_CENTER, true);
 
   if (digitalRead(RIGHT_STICK_SW_PIN) == LOW) {

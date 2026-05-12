@@ -208,21 +208,25 @@ void setMotorPair(int leftSpeed, int rightSpeed)
 
 void motorsForward()
 {
+    Serial.println("Drive: forward");
     setMotorPair(MOTOR_SPEED, MOTOR_SPEED);
 }
 
 void motorsReverse()
 {
+    Serial.println("Drive: reverse");
     setMotorPair(-MOTOR_SPEED, -MOTOR_SPEED);
 }
 
 void motorsLeft()
 {
+    Serial.println("Drive: left");
     setMotorPair(-MOTOR_SPEED, MOTOR_SPEED);
 }
 
 void motorsRight()
 {
+    Serial.println("Drive: right");
     setMotorPair(MOTOR_SPEED, -MOTOR_SPEED);
 }
 
@@ -315,6 +319,13 @@ void handleControlPacket(char *packet)
     }
 
     lastControlMs = millis();
+
+    Serial.print("Control packet: throttle=");
+    Serial.print(throttle);
+    Serial.print(" turn=");
+    Serial.print(turn);
+    Serial.print(" flags=");
+    Serial.println(flags);
 
     bool cstButtonPressed = (flags & 0x01) != 0;
     if (cstButtonPressed && !cstButtonWasPressed)

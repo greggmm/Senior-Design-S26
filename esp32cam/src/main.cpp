@@ -53,6 +53,22 @@ const unsigned long HEARTBEAT_MS = 200;
 // External MCU command output (change if needed)
 static const int CTRL_TX_PIN = D6; // GPIO43 on XIAO ESP32-S3
 
+static void forwardControlToUno(const controlState &cs) {
+  Serial.printf(
+    "UNO ctrl: thr=%d turn=%d flags=0x%02X\n",
+    (int)cs.drive_throttle,
+    (int)cs.drive_turn,
+    (unsigned)cs.flags
+  );
+
+  Serial2.printf(
+    "%d,%d,%u\n",
+    (int)cs.drive_throttle,
+    (int)cs.drive_turn,
+    (unsigned)cs.flags
+  );
+}
+
 static camera_config_t camCfg() {
   camera_config_t c = {};
   c.ledc_timer   = LEDC_TIMER_0;
@@ -159,6 +175,21 @@ void loop() {
   static int count = 0;
 
   uint32_t now = millis();
+  bool shouldForwardControl = false;
+
+  noInterrupts();
+  memcpy(&cs, (const void *)&latestControl, sizeof(cs));
+  if (controlUpdated || (now - lastSentMs) >= HEARTBEAT_MS) {
+    shouldForwardControl = true;
+    controlUpdated = false;
+  }
+  interrupts();
+
+  if (shouldForwardControl) {
+    lastSentMs = now;
+    forwardControlToUno(cs);
+  }
+
   if (now - lastSend < SEND_INTERVAL_MS) {
     delay(1);
     return;
@@ -182,29 +213,5 @@ void loop() {
 
   esp_camera_fb_return(fb);
   delay(0);
-
-  noInterrupts();
-  memcpy(&cs, (const void *)&latestControl, sizeof(cs));
-  controlUpdated = false;
-  interrupts();
-
-  bool heartbeat = (millis() - lastSentMs) >= HEARTBEAT_MS;
-  if (heartbeat) {
-    lastSentMs = millis();
-    Serial.printf(
-       "thr=%d turn=%d yaw=%d flags=0x%02X\n",
-       (int)cs.drive_throttle,
-       (int)cs.drive_turn,
-       (int)cs.cam_yaw,
-       (unsigned)cs.flags
-     );
-     // Forward only the commands the Uno owns: throttle, turn, flags.
-    Serial2.printf(
-      "%d,%d,%u\n",
-      (int)cs.drive_throttle,
-      (int)cs.drive_turn,
-      (unsigned)cs.flags
-    );
-  }
 }
 
