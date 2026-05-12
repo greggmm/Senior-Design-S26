@@ -137,7 +137,7 @@ void setup() {
   Serial.println("\nESPNowCam XIAO ESP32-S3 sender");
 
   // TX-only stream for control forwarding to downstream MCU
-  Serial2.begin(9600, SERIAL_8N1, -1, CTRL_TX_PIN);
+  Serial2.begin(115200, SERIAL_8N1, -1, CTRL_TX_PIN);
 
   initCameraOrHalt();
 

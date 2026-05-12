@@ -47,8 +47,18 @@
 #define MOTOR_IN4 11
 
 #define MOTOR_SPEED 255 // 0-255, 127 ~= 50%
+#define CONTROL_BUFFER_SIZE 32
+#define CONTROL_TIMEOUT_MS 500
+#define DRIVE_INPUT_THRESHOLD 50
 
 Servo cameraServo;
+
+char controlBuffer[CONTROL_BUFFER_SIZE];
+byte controlIndex = 0;
+unsigned long lastControlMs = 0;
+bool cstButtonWasPressed = false;
+
+void runCSTSequence();
 
 // -------------------------
 // Step pulse helper
@@ -168,28 +178,196 @@ void cameraCSTView()
 // -------------------------
 // Wheel motor control
 // -------------------------
+void setMotorPair(int leftSpeed, int rightSpeed)
+{
+    leftSpeed = constrain(leftSpeed, -255, 255);
+    rightSpeed = constrain(rightSpeed, -255, 255);
+
+    if (leftSpeed >= 0)
+    {
+        analogWrite(MOTOR_IN1, leftSpeed);
+        analogWrite(MOTOR_IN2, 0);
+    }
+    else
+    {
+        analogWrite(MOTOR_IN1, 0);
+        analogWrite(MOTOR_IN2, -leftSpeed);
+    }
+
+    if (rightSpeed >= 0)
+    {
+        analogWrite(MOTOR_IN3, 0);
+        analogWrite(MOTOR_IN4, rightSpeed);
+    }
+    else
+    {
+        analogWrite(MOTOR_IN3, -rightSpeed);
+        analogWrite(MOTOR_IN4, 0);
+    }
+}
+
 void motorsForward()
 {
-    digitalWrite(MOTOR_IN1, MOTOR_SPEED);
-    analogWrite(MOTOR_IN2, LOW);
-    digitalWrite(MOTOR_IN3, LOW);
-    analogWrite(MOTOR_IN4, MOTOR_SPEED);
+    setMotorPair(MOTOR_SPEED, MOTOR_SPEED);
 }
 
 void motorsReverse()
 {
-    digitalWrite(MOTOR_IN1, LOW);
-    analogWrite(MOTOR_IN2, MOTOR_SPEED);
-    digitalWrite(MOTOR_IN3, MOTOR_SPEED);
-    analogWrite(MOTOR_IN4, LOW);
+    setMotorPair(-MOTOR_SPEED, -MOTOR_SPEED);
+}
+
+void motorsLeft()
+{
+    setMotorPair(-MOTOR_SPEED, MOTOR_SPEED);
+}
+
+void motorsRight()
+{
+    setMotorPair(MOTOR_SPEED, -MOTOR_SPEED);
 }
 
 void motorsStop()
 {
-    digitalWrite(MOTOR_IN1, LOW);
-    digitalWrite(MOTOR_IN2, LOW);
-    digitalWrite(MOTOR_IN3, LOW);
-    digitalWrite(MOTOR_IN4, LOW);
+    setMotorPair(0, 0);
+}
+
+bool parseControlPacket(char *packet, int &throttle, int &turn, unsigned int &flags)
+{
+    char *first = strtok(packet, ",");
+    char *second = strtok(NULL, ",");
+    char *third = strtok(NULL, ",");
+
+    if (first == NULL || second == NULL || third == NULL || strtok(NULL, ",") != NULL)
+    {
+        return false;
+    }
+
+    char *end = NULL;
+    long parsedThrottle = strtol(first, &end, 10);
+    if (end == first || *end != '\0' || parsedThrottle < -100 || parsedThrottle > 100)
+    {
+        return false;
+    }
+
+    end = NULL;
+    long parsedTurn = strtol(second, &end, 10);
+    if (end == second || *end != '\0' || parsedTurn < -100 || parsedTurn > 100)
+    {
+        return false;
+    }
+
+    end = NULL;
+    unsigned long parsedFlags = strtoul(third, &end, 10);
+    if (end == third || *end != '\0' || parsedFlags > 255)
+    {
+        return false;
+    }
+
+    throttle = (int)parsedThrottle;
+    turn = (int)parsedTurn;
+    flags = (unsigned int)parsedFlags;
+
+    return true;
+}
+
+void driveFromControl(int throttle, int turn)
+{
+    int throttleMagnitude = abs(throttle);
+    int turnMagnitude = abs(turn);
+
+    if (throttleMagnitude < DRIVE_INPUT_THRESHOLD && turnMagnitude < DRIVE_INPUT_THRESHOLD)
+    {
+        motorsStop();
+        return;
+    }
+
+    if (throttleMagnitude >= turnMagnitude)
+    {
+        if (throttle > 0)
+        {
+            motorsForward();
+        }
+        else
+        {
+            motorsReverse();
+        }
+    }
+    else if (turn > 0)
+    {
+        motorsRight();
+    }
+    else
+    {
+        motorsLeft();
+    }
+}
+
+void handleControlPacket(char *packet)
+{
+    int throttle = 0;
+    int turn = 0;
+    unsigned int flags = 0;
+
+    if (!parseControlPacket(packet, throttle, turn, flags))
+    {
+        Serial.println("Invalid control packet");
+        return;
+    }
+
+    lastControlMs = millis();
+
+    bool cstButtonPressed = (flags & 0x01) != 0;
+    if (cstButtonPressed && !cstButtonWasPressed)
+    {
+        motorsStop();
+        runCSTSequence();
+    }
+    cstButtonWasPressed = cstButtonPressed;
+
+    if (!cstButtonPressed)
+    {
+        driveFromControl(throttle, turn);
+    }
+}
+
+void readControlSerial()
+{
+    while (Serial.available() > 0)
+    {
+        char incoming = Serial.read();
+
+        if (incoming == '\r')
+        {
+            continue;
+        }
+
+        if (incoming == '\n')
+        {
+            controlBuffer[controlIndex] = '\0';
+            if (controlIndex > 0)
+            {
+                handleControlPacket(controlBuffer);
+            }
+            controlIndex = 0;
+            continue;
+        }
+
+        if (controlIndex < CONTROL_BUFFER_SIZE - 1)
+        {
+            controlBuffer[controlIndex++] = incoming;
+        }
+        else
+        {
+            controlIndex = 0;
+            Serial.println("Control packet too long");
+        }
+    }
+
+    if (lastControlMs != 0 && millis() - lastControlMs > CONTROL_TIMEOUT_MS)
+    {
+        motorsStop();
+        lastControlMs = 0;
+    }
 }
 
 // -------------------------
@@ -280,17 +458,7 @@ void setup()
     cameraServo.attach(SERVO_PIN);
     cameraDriveView();
 
-    Serial.println("System Test Starting...");
-
-    testWheelMotors();
-    delay(1000);
-
-    testCameraServo();
-    delay(1000);
-
-    // runCSTSequence();
-
-    Serial.println("All tests complete.");
+    Serial.println("Ready for control packets: throttle,turn,flags");
 }
 
 // -------------------------
@@ -298,5 +466,5 @@ void setup()
 // -------------------------
 void loop()
 {
-    delay(1000);
+    readControlSerial();
 }
